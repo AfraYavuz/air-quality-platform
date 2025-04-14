@@ -15,6 +15,7 @@ def create_table():
     connection = create_connection()
     cursor = connection.cursor()
 
+    # air_quality_data tablosu
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS air_quality_data (
         id SERIAL PRIMARY KEY,
@@ -25,6 +26,22 @@ def create_table():
         no2 DOUBLE PRECISION,
         so2 DOUBLE PRECISION,
         o3 DOUBLE PRECISION,
+        timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # anomalies tablosu
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS anomalies (
+        id SERIAL PRIMARY KEY,
+        latitude DOUBLE PRECISION,
+        longitude DOUBLE PRECISION,
+        pm25 DOUBLE PRECISION,
+        pm10 DOUBLE PRECISION,
+        no2 DOUBLE PRECISION,
+        so2 DOUBLE PRECISION,
+        o3 DOUBLE PRECISION,
+        reason TEXT,
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     )
     """)

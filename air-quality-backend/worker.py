@@ -12,9 +12,30 @@ def create_connection():
         port="5432"
     )
 
+# Anomali tespiti fonksiyonu
+def detect_anomalies(data):
+    anomalies = []
+
+    if data["pm25"] > 100:
+        anomalies.append(f"Yüksek PM2.5: {data['pm25']}")
+
+    if data["pm10"] > 150:
+        anomalies.append(f"Yüksek PM10: {data['pm10']}")
+
+    if data["no2"] > 200:
+        anomalies.append(f"Yüksek NO2: {data['no2']}")
+
+    if anomalies:
+        print("🚨 Anomali Tespit Edildi:")
+        for a in anomalies:
+            print(f" - {a}")
+
 def callback(ch, method, properties, body):
     data = json.loads(body)
     print("Veri alındı:", data)
+
+    # Anomali kontrolü
+    detect_anomalies(data)
 
     connection = create_connection()
     cursor = connection.cursor()
@@ -35,6 +56,7 @@ def callback(ch, method, properties, body):
     connection.commit()
     cursor.close()
     connection.close()
+    print("[✓] Veri kaydedildi")
 
 # RabbitMQ bağlantısı
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
