@@ -1,11 +1,21 @@
 from fastapi import FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
 from database import create_table, create_connection
 import pika
 import json
 from datetime import datetime
-from fastapi import Query
 
+# FastAPI uygulamanızı oluşturun
 app = FastAPI()
+
+# CORS Middleware ekleyin
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # React uygulamanızın portunu buraya ekleyin
+    allow_credentials=True,
+    allow_methods=["*"],  # Tüm HTTP metotlarına izin ver
+    allow_headers=["*"],  # Tüm başlıklara izin ver
+)
 
 @app.post("/add_air_quality")
 async def add_air_quality(latitude: float, longitude: float, pm25: float, pm10: float, no2: float, so2: float, o3: float):
@@ -115,4 +125,5 @@ async def get_anomalies_by_time(
 
     return {"anomalies": data}
 
+# Tabloyu oluştur
 create_table()
