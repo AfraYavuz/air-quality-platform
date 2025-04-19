@@ -1,6 +1,7 @@
 import pika
 import json
 import psycopg2
+import requests
 
 # PostgreSQL bağlantısı
 def create_connection():
@@ -12,7 +13,7 @@ def create_connection():
         port="5432"
     )
 
-# Anomali tespiti fonksiyonu
+# Anomali tespiti
 def detect_anomalies(data):
     anomalies = []
 
@@ -25,21 +26,46 @@ def detect_anomalies(data):
     if data["no2"] > 200:
         anomalies.append(f"Yüksek NO2: {data['no2']}")
 
+    return anomalies
+
+# Anomali WebSocket'e gönderimi
+def send_anomaly_to_websocket(anomaly_data):
+    try:
+        requests.post(
+            "http://localhost:8000/broadcast_anomaly",
+            json=anomaly_data
+        )
+    except Exception as e:
+        print(f"[!] Anomali WebSocket'e gönderilemedi: {e}")
+
+# RabbitMQ callback
+def callback(ch, method, properties, body):
+    data = json.loads(body)
+    print("Veri alındı:", data)
+
+    # Anomali tespiti
+    anomalies = detect_anomalies(data)
     if anomalies:
         print("🚨 Anomali Tespit Edildi:")
         for a in anomalies:
             print(f" - {a}")
 
-def callback(ch, method, properties, body):
-    data = json.loads(body)
-    print("Veri alındı:", data)
+        # WebSocket'e gönder
+        anomaly_record = {
+            "latitude": data["latitude"],
+            "longitude": data["longitude"],
+            "pm25": data["pm25"],
+            "pm10": data["pm10"],
+            "no2": data["no2"],
+            "so2": data["so2"],
+            "o3": data["o3"],
+            "reason": "; ".join(anomalies)
+        }
+        send_anomaly_to_websocket(anomaly_record)
 
-    # Anomali kontrolü
-    detect_anomalies(data)
-
+    # Veritabanına kaydet
     connection = create_connection()
     cursor = connection.cursor()
-
     cursor.execute("""
     INSERT INTO air_quality_data (latitude, longitude, pm25, pm10, no2, so2, o3)
     VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -52,20 +78,16 @@ def callback(ch, method, properties, body):
         data["so2"],
         data["o3"]
     ))
-
     connection.commit()
     cursor.close()
     connection.close()
     print("[✓] Veri kaydedildi")
 
-# RabbitMQ bağlantısı
+# RabbitMQ ayarları
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
 channel = connection.channel()
-
-# Kuyruk oluştur (varsa sorun olmaz)
 channel.queue_declare(queue='air_quality_queue')
 
-# Kuyruğu dinlemeye başla
 channel.basic_consume(
     queue='air_quality_queue',
     on_message_callback=callback,

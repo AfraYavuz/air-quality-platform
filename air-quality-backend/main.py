@@ -1,22 +1,59 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from typing import List
 from database import create_table, create_connection
 import pika
 import json
 from datetime import datetime
 
-# FastAPI uygulamanızı oluşturun
 app = FastAPI()
 
-# CORS Middleware ekleyin
+# CORS ayarları
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # React uygulamanızın portunu buraya ekleyin
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["*"],  # Tüm HTTP metotlarına izin ver
-    allow_headers=["*"],  # Tüm başlıklara izin ver
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+# WebSocket bağlantı yöneticisi
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+manager = ConnectionManager()
+
+# WebSocket endpoint
+@app.websocket("/ws/anomalies")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # bağlantıyı canlı tut
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+# Broadcast endpoint (worker'dan çağrılacak)
+@app.post("/broadcast_anomaly")
+async def broadcast_anomaly(request: Request):
+    payload = await request.json()
+    message = json.dumps(payload)
+    await manager.broadcast(message)
+    return {"status": "broadcasted"}
+
+# Veri kuyruğa gönderme endpoint'i
 @app.post("/add_air_quality")
 async def add_air_quality(latitude: float, longitude: float, pm25: float, pm10: float, no2: float, so2: float, o3: float):
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
@@ -42,6 +79,7 @@ async def add_air_quality(latitude: float, longitude: float, pm25: float, pm10: 
     connection.close()
     return {"message": "Veri kuyruğa başarıyla gönderildi"}
 
+# Son verileri çekme endpoint'i
 @app.get("/air_quality_data")
 async def get_air_quality_data():
     connection = create_connection()
@@ -67,6 +105,7 @@ async def get_air_quality_data():
 
     return {"data": data}
 
+# Anomalileri çekme
 @app.get("/anomalies")
 async def get_anomalies():
     connection = create_connection()
@@ -125,5 +164,5 @@ async def get_anomalies_by_time(
 
     return {"anomalies": data}
 
-# Tabloyu oluştur
+# Veritabanı tablolarını oluştur
 create_table()
